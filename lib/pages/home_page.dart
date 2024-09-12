@@ -1,3 +1,4 @@
+import 'package:expense_tracker/bar%20graph/bar_graph.dart';
 import 'package:expense_tracker/components/my_list_tile.dart';
 import 'package:expense_tracker/database/expense_database.dart';
 import 'package:expense_tracker/helper/helper_function.dart';
@@ -13,30 +14,52 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  TextEditingController nameController = TextEditingController();
-  TextEditingController amountController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController amountController = TextEditingController();
+
+  Future<Map<String, double>>? _monthlyTotalFuture;
+  Future<double>? _calculateCurrentMonthTotal;
 
   @override
   void initState() {
-    Provider.of<ExpenseDatabase>(context, listen: false).readExpenses();
     super.initState();
+    Provider.of<ExpenseDatabase>(context, listen: false).readExpenses();
+    refreshData();
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    amountController.dispose();
+    super.dispose();
+  }
+
+  void refreshData() {
+    setState(() {
+      _monthlyTotalFuture = Provider.of<ExpenseDatabase>(context, listen: false)
+          .calculateMonthlyTotals();
+
+      _calculateCurrentMonthTotal =
+          Provider.of<ExpenseDatabase>(context, listen: false)
+              .calculateCurrentMonthTotal();
+    });
   }
 
   void openNewExpenseBox() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("New Expense"),
+        title: const Text("New Expense"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              decoration: InputDecoration(hintText: "Name"),
+              decoration: const InputDecoration(hintText: "Name"),
             ),
             TextField(
               controller: amountController,
-              decoration: InputDecoration(hintText: "Amount"),
+              decoration: const InputDecoration(hintText: "Amount"),
             ),
           ],
         ),
@@ -46,30 +69,27 @@ class _HomePageState extends State<HomePage> {
   }
 
   void openEditBox(Expense expense) {
-    String existingName = expense.name;
-    String existingAmount = expense.amount.toString();
+    nameController.text = expense.name;
+    amountController.text = expense.amount.toString();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Edit Expense"),
+        title: const Text("Edit Expense"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              decoration: InputDecoration(hintText: existingName),
+              decoration: const InputDecoration(hintText: "Name"),
             ),
             TextField(
               controller: amountController,
-              decoration: InputDecoration(hintText: existingAmount),
+              decoration: const InputDecoration(hintText: "Amount"),
             ),
           ],
         ),
-        actions: [
-          _cancelButton(),
-          _editExpenseButton(expense),
-        ],
+        actions: [_cancelButton(), _editExpenseButton(expense)],
       ),
     );
   }
@@ -78,37 +98,118 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Delete Expense"),
-        actions: [
-          _cancelButton(),
-          _deleteExpenseButton(expense), // Pass the expense object
-        ],
+        title: const Text("Delete Expense"),
+        content: const Text("Are you sure you want to delete this expense?"),
+        actions: [_cancelButton(), _deleteExpenseButton(expense)],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ExpenseDatabase>(
-      builder: (context, value, child) => Scaffold(
+    return Consumer<ExpenseDatabase>(builder: (context, value, child) {
+      int startMonth = value.getStartMonth();
+      int startYear = value.getStartYear();
+      int currentMonth = DateTime.now().month;
+      int currentYear = DateTime.now().year;
+
+      int monthCount =
+          calculateMonthCount(startYear, startMonth, currentYear, currentMonth);
+
+      List<Expense> currentMonthExpress = value.AllExpense.where((expense) {
+        return expense.date.year == currentYear &&
+            expense.date.month == currentMonth;
+      }).toList();
+
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: FutureBuilder<double>(
+            future: _calculateCurrentMonthTotal,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.done) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('\₹${snapshot.data!.toStringAsFixed(2)}'),
+                    Text(getCurrentMonthName()),
+                  ],
+                );
+              } else {
+                return Text("loading...");
+              }
+            },
+          ),
+          centerTitle: true, // Center the title if needed
+          backgroundColor:
+              Colors.white, // You can change the color to fit your theme
+        ),
         floatingActionButton: FloatingActionButton(
           onPressed: openNewExpenseBox,
-          child: Icon(Icons.add),
+          child: const Icon(Icons.add),
         ),
-        body: ListView.builder(
-          itemCount: value.AllExpense.length,
-          itemBuilder: (context, index) {
-            Expense individualExpense = value.AllExpense[index];
-            return MyListTile(
-              title: individualExpense.name,
-              trailing: formatAmount(individualExpense.amount),
-              onEditPressed: (context) => openEditBox(individualExpense),
-              onDeletePressed: (context) => openDeleteBox(individualExpense),
-            );
-          },
+        body: SafeArea(
+          child: Padding(
+            padding:
+                const EdgeInsets.all(8.0), // Adds padding around the content
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 250,
+                  child: FutureBuilder<Map<int, double>>(
+                    future: _monthlyTotalFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      } else if (snapshot.hasError) {
+                        return const Center(
+                          child: Text("Error loading data"),
+                        );
+                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Text("No data available"),
+                        );
+                      } else {
+                        final monthlyTotals = snapshot.data!;
+                        List<double> monthlySummary = List.generate(
+                          monthCount,
+                          (index) => monthlyTotals[startMonth + index] ?? 0.0,
+                        );
+                        return MyBarGraph(
+                          monthlySummary: monthlySummary,
+                          startMonth: startMonth,
+                        );
+                      }
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: currentMonthExpress.length,
+                    itemBuilder: (context, index) {
+                      int reversdIndex = currentMonthExpress.length - 1 - index;
+
+                      Expense individualExpense =
+                          currentMonthExpress[reversdIndex];
+                      return MyListTile(
+                        title: individualExpense.name,
+                        trailing: formatAmount(individualExpense.amount),
+                        onEditPressed: (context) =>
+                            openEditBox(individualExpense),
+                        onDeletePressed: (context) =>
+                            openDeleteBox(individualExpense),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _cancelButton() {
@@ -134,6 +235,7 @@ class _HomePageState extends State<HomePage> {
               date: DateTime.now());
 
           await context.read<ExpenseDatabase>().createNewExpense(newExpense);
+          refreshData();
           nameController.clear();
           amountController.clear();
         }
@@ -156,13 +258,14 @@ class _HomePageState extends State<HomePage> {
                   ? convertStringToDouble(amountController.text)
                   : expense.amount,
               date: DateTime.now());
-          int existingId = expense.id;
           await context
               .read<ExpenseDatabase>()
-              .updateExpense(existingId, updatedExpense);
+              .updateExpense(expense.id, updatedExpense);
+
+          refreshData();
         }
       },
-      child: Text('Save'),
+      child: const Text('Save'),
     );
   }
 
@@ -170,11 +273,10 @@ class _HomePageState extends State<HomePage> {
     return MaterialButton(
       onPressed: () async {
         Navigator.pop(context);
-        await context
-            .read<ExpenseDatabase>()
-            .deleteExpense(expense.id); // Use the expense id
+        await context.read<ExpenseDatabase>().deleteExpense(expense.id);
+        refreshData();
       },
-      child: Text("Delete"),
+      child: const Text("Delete"),
     );
   }
 }

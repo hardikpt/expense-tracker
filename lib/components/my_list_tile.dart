@@ -23,17 +23,23 @@ class MyListTile extends StatelessWidget {
           SlidableAction(
             onPressed: onEditPressed,
             icon: Icons.settings,
+            backgroundColor: Colors.grey,
+            foregroundColor: Colors.white,
+            borderRadius: BorderRadius.circular(4),
           ),
 
           SlidableAction(
             onPressed: onDeletePressed,
             icon: Icons.delete,
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+            borderRadius: BorderRadius.circular(4),
           )
         ],
       ),
       child: ListTile(
-        title: Text(title),
-        trailing: Text(trailing),
+        title: Text(title,style: TextStyle(color: Colors.black, fontSize: 25,),),
+        trailing: Text(trailing, style: TextStyle(color: Colors.green, fontSize: 25,),),
       ),
     );
   }

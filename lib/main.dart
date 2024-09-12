@@ -3,7 +3,7 @@ import 'package:expense_tracker/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-void main() async {
+  void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ExpenseDatabase.initialize();
 
